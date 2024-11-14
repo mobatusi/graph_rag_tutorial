@@ -62,3 +62,10 @@ def generate_response(messages):
       return response_content
     except Exception as e:
       return f"Error: {str(e)}"
+
+def get_user_input_embedding(user_input):
+   response = client.embeddings.create(
+      model="text-embedding-3-small",
+      input=user_input,
+   )
+   return response.data[0].embedding

@@ -1,11 +1,13 @@
 import streamlit as st
-from LLM import get_entities, generate_response
+from LLM import get_entities, generate_response, get_user_input_embedding
 from Neo4j import Neo4jHandler
 from dotenv import load_dotenv
 import os
 load_dotenv()
 # Streamlit app title
 st.title("Knowledge Graph-Powered Chat: Query Your Dataset")
+
+
 
 # Initialize session state to store chat history
 if "messages" not in st.session_state:
@@ -14,9 +16,9 @@ if "messages" not in st.session_state:
 if "user_input" not in st.session_state:
     st.session_state["user_input"] = ""
 
-URL = os.environ.get("URL")
-USERNAME = os.environ.get("USERNAME")
-PASSWORD = os.environ.get("PASSWORD")
+URL = os.environ.get("NEO4J_URI")
+USERNAME = os.environ.get("NEO4J_USER")
+PASSWORD = os.environ.get("NEO4J_PASSWORD")
 
 # Function to handle input submission
 def handle_submit():
@@ -26,27 +28,63 @@ def handle_submit():
         extracted_entities = get_entities(user_input)
         print("Entities in the query: ", extracted_entities)
 
-        # Step 2: Retrieve associated relationships from the Neo4j knowledge graph
+        # Step 2: Generate an embedding from the user input
+        user_input_embedding = get_user_input_embedding(user_input)
+
+        # Step 3: Retrieve similar entities and relationships from the Neo4j knowledge graph
         neo4j_handler = Neo4jHandler(URL, USERNAME, PASSWORD)
-        related_relationships_tuple_list = neo4j_handler.get_entities_and_relationships(extracted_entities)
+        related_relationships_tuple_list = neo4j_handler.get_similar_entities_and_relationships(user_input_embedding)
         neo4j_handler.close()
         print("Extracted context from the Knowledge Graph: ", related_relationships_tuple_list)
 
-        # Step 3: Augment the query with knowledge graph context
+        # Step 4: Augment the query with knowledge graph context
+        context = "\n".join([f"({e1}) -[{rel}]-> ({e2}) [Similarity: {sim:.2f}]" for e1, rel, e2, sim in related_relationships_tuple_list])
+
         messages = [
-            {"role": "system", "content": f"Use the following knowledge graph context (provided as relationship tuple list: (Entity 1, Relation, Entity 2)) to answer the user queries.\n{related_relationships_tuple_list}"},
+            {"role": "system", "content": f"Use the following knowledge graph context (provided as relationships with similarity scores) to answer the user queries.\n{context}"},
             {"role": "user", "content": user_input},
         ]
 
-        # Step 4: Get GPT-4 response using the augmented query
+        # Step 5: Get GPT-4 response using the augmented query
         bot_response = generate_response(messages)
 
-        # Step 5: Append the user message and bot response to the session state chat history
+        # Step 6: Append the user message and bot response to the session state chat history
         st.session_state["messages"].append({"role": "user", "content": user_input})
         st.session_state["messages"].append({"role": "assistant", "content": bot_response})
 
         # Clear the input field in session state
         st.session_state["user_input"] = ""
+
+# Add sidebar with questions
+st.sidebar.title("Questions you can ask the dataset:")
+
+if st.sidebar.button("Who is Abraham Lincoln?"):
+    st.session_state["user_input"] = "Who is Abraham Lincoln?"
+    handle_submit()
+
+if st.sidebar.button("Who was the sixteenth President of the United States?"):
+    st.session_state["user_input"] = "Who was the sixteenth President of the United States?"
+    handle_submit()
+
+if st.sidebar.button("What significant act did Lincoln sign in 1863?"):
+    st.session_state["user_input"] = "What significant act did Lincoln sign in 1863?"
+    handle_submit()
+
+if st.sidebar.button("In what year did Lincoln begin his political career?"):
+    st.session_state["user_input"] = "In what year did Lincoln begin his political career?"
+    handle_submit()
+
+if st.sidebar.button("What was established by The Legal Tender Act of 1862?"):
+    st.session_state["user_input"] = "What was established by The Legal Tender Act of 1862?"
+    handle_submit()
+
+if st.sidebar.button("Who assassinated Abraham Lincoln?"):
+    st.session_state["user_input"] = "Who assassinated Abraham Lincoln?"
+    handle_submit()
+
+if st.sidebar.button("What was the primary goal of the Emancipation Proclamation issued by Lincoln?"):
+    st.session_state["user_input"] = "What was the primary goal of the Emancipation Proclamation issued by Lincoln?"
+    handle_submit()
 
 # User input section
 st.text_input("Ask a question related to your dataset:", value=st.session_state["user_input"], key="user_input", on_change=handle_submit)
